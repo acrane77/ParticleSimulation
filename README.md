@@ -56,6 +56,6 @@ It supports multiple particle emission patterns and particle types, and renders 
 
 ### Build & Run
 In the project terminal run:  
-```g++ .\particle_main.cpp .\deps\src\glad.c -I .\deps\include -I C:\msys64\mingw64\include -L C:\msys64\mingw64\lib -lglfw3 -lopengl32 -lgdi32 -luser32 -lshell32 -lwinmm -o main.exe```
+```g++ .\particle_main.cpp .\deps\src\glad.c -I .\deps\include -I C:\msys64\mingw64\include -L C:\msys64\mingw64\lib -lglfw3 -lopengl32 -lgdi32 -luser32 -lshell32 -lwinmm -o main.exe```  
 Then run the .exe with:  
 ```./main```
