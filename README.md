@@ -32,10 +32,10 @@ It supports multiple particle emission patterns and particle types, and renders 
   - Multiple emitters can be active at once.
 
 - **Keyboard shortcuts**
-  - `1`–`5` → Select emission pattern (`Plume`, `Random`, `Rising`, `Falling`, `Circle`).
-  - `S` → Smoke particles.
-  - `F` → Firework burst (sparks).
-  - `C` → Clear all emitters.
+  - `1`–`5` Selects emission pattern (`Plume`, `Random`, `Rising`, `Falling`, `Circle`).
+  - `S` activate Smoke particles.
+  - `F` activate Firework burst (sparks).
+  - `C` Clear all emitters.
 
 - **Shaders**
   - Vertex shader (`points.vert`): applies projection, view transformations, and particle sizing.
@@ -55,9 +55,4 @@ It supports multiple particle emission patterns and particle types, and renders 
   - [GLM](https://github.com/g-truc/glm) – math library
 
 ### Build & Run
-```g++ .\particle_main.cpp .\deps\src\glad.c `
->> -I .\deps\include `
->> -I C:\msys64\mingw64\include `
->> -L C:\msys64\mingw64\lib `
->> -lglfw3 -lopengl32 -lgdi32 -luser32 -lshell32 -lwinmm `
->> -o main.exe```
+```g++ .\particle_main.cpp .\deps\src\glad.c -I .\deps\include -I C:\msys64\mingw64\include -L C:\msys64\mingw64\lib -lglfw3 -lopengl32 -lgdi32 -luser32 -lshell32 -lwinmm -o main.exe```
