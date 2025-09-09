@@ -1,6 +1,6 @@
 # OpenGL Particle System
 
-This project implements a **real-time particle system** in C++ using **OpenGL 4.5**, **GLFW**, and **GLAD**.  
+This project implements a **real-time particle system** in C++ using **OpenGL 4.5**, **GLFW**, **GLAD**, and **GLM**.  
 It supports multiple particle emission patterns and particle types, and renders them as smooth, circular, feathered sprites via custom GLSL shaders.
 
 ---
