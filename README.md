@@ -7,7 +7,7 @@ It supports multiple particle emission patterns and particle types, and renders 
 
 ## Project Structure
 ├── deps/ | External dependencies (GLFW, GLAD, GLM, etc.)  
-├── shaders/  | Custom shaders
+├── shaders/  | Custom shaders  
 │ ├── points.vert | Vertex shader (transforms and sizes particles)  
 │ └── points.frag | Fragment shader (circular sprite with smooth edges)  
 ├── particle_main.cpp | Main C++ program (simulation + rendering loop)  
