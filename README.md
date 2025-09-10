@@ -6,12 +6,12 @@ Supports multiple emission patterns and particle types, including smoke, sparks,
 ---
 
 ## Project Structure  
-├── deps/                 External dependencies (GLFW, GLAD, GLM, etc.)  
-├── shaders/              Custom shaders  
-│   ├── points.vert       Vertex shader (transform + size)  
-│   └── points.frag       Fragment shader (circular sprite with smooth edges)  
-├── particle_main.cpp     Simulation + rendering loop  
-└── README.md             This file  
+├── deps/                 | External dependencies (GLFW, GLAD, GLM, etc.)  
+├── shaders/              |  Custom shaders  
+│   ├── points.vert       | Vertex shader (transform + size)  
+│   └── points.frag       | Fragment shader (circular sprite with smooth edges)  
+├── particle_main.cpp     | Simulation + rendering loop  
+└── README.md             | This file  
 
 ---
 
