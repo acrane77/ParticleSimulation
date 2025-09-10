@@ -16,7 +16,7 @@
 using namespace std;
 
 enum class Pattern { Plume, Random, Rising, Falling, Circle };
-enum class ParticleType { Default, Smoke, Spark };
+enum class ParticleType { Smoke, Spark, Firework, Rain, Snow };
 
 struct Particle {
     glm::vec3 position;
@@ -33,6 +33,12 @@ struct DrawParticle {
     glm::vec4 colour;
 };
 
+struct Firework {
+    glm::vec3 pos, vel;
+    float fuse;
+    glm::vec4 themeColour;
+};
+
 struct Camera {
     float yaw = -0.3f;
     float pitch = -0.2f;
@@ -42,6 +48,15 @@ struct Camera {
     bool rotating = false, panning = false;
     double lastX = 0.0, lastY = 0.0;
 };
+
+struct Gust {
+    glm::vec3 dir = glm::normalize(glm::vec3(1,0,0));
+    glm::vec3 dirTarget = glm::vec3(1,0,0);
+    float base = 0.2f;
+    float current = 0.0f;
+    float target = 0.0f;
+    float timer = 0.0f;
+} gust;
 
 struct Emitter {
     glm::vec3 position = {0,0,0};
@@ -70,8 +85,8 @@ class ParticleSystem { // Circular queue of particles
         size_t tail;
         size_t count;
     public:
-        ParticleSystem() : maxParticles(20000), head(0), tail(0), count(0) { 
-            particles.resize(maxParticles); // Reserve space for 20k particles
+        ParticleSystem() : maxParticles(50000), head(0), tail(0), count(0) { 
+            particles.resize(maxParticles); // Reserve space for 50k particles
         }
 
         void spawnParticle(const Particle& particle) {
@@ -93,6 +108,7 @@ class ParticleSystem { // Circular queue of particles
                 count--;
             }
         }
+
         template<typename T>
         void forEachAlive(T&& fn) {
             for (size_t i = 0, idx = tail; i < count; ++i, idx = (idx + 1) % maxParticles) {
@@ -118,7 +134,7 @@ class ParticleSystem { // Circular queue of particles
         
 };
 
-static mt19937 rng{ random_device{}() }; // random number generator
+static mt19937 rng{ random_device{}() }; // random number generators
 float g_spawnCarry = 0.0f;
 inline float rand01() { return uniform_real_distribution<float>{ 0.0f, 1.0f }(rng); }
 inline float randRange(float min, float max) { uniform_real_distribution<float> dist{ min, max }; return dist(rng); }
@@ -238,7 +254,12 @@ inline void spawnFireworkBurst(ParticleSystem& ps, const glm::vec3& position, in
     }
 }
 
-inline void Step(ParticleSystem& ps, const std::vector<Emitter>& emitters, float dt, const glm::vec3& gravity) {
+inline float bandWave(const glm::vec3& p, float t, float freq=0.35f, float speed=0.6f) {
+    float phase = p.x*freq + p.z*freq + t*speed;
+    return 0.5f * (sinf(phase) + 0.5f*sinf(.7f*phase + 1.7f));
+}
+
+inline void Step(ParticleSystem& ps, const std::vector<Emitter>& emitters, float dt, const glm::vec3& gravity, double& simTime) {
     for (const auto& em : emitters) {
         float want = em.rate * dt + g_spawnCarry;
         int toSpawn = (int)floor(want);
@@ -248,26 +269,90 @@ inline void Step(ParticleSystem& ps, const std::vector<Emitter>& emitters, float
 
     ps.forEachAlive([&](Particle& p) {
         glm::vec3 accel = gravity;
+
+        const float smokeWeight = 0.12f;
+        const float sparkWeight = 0.18f;
+
+        float angle = 0.35f * bandWave(p.position * .7f, (float)simTime, 0.7f, 1.6f);
+        float cf = cosf(angle);
+        float sf = sinf(angle);
+        glm::vec3 localDir = glm::normalize(glm::vec3(cf*gust.dir.x + sf*gust.dir.z, 0.0f, -sf*gust.dir.x + cf*gust.dir.z));
+
+        float s = .5f + bandWave(p.position, (float)simTime, .6f, 1.8f) * .5f;
+        glm::vec3 gustVec = localDir * (gust.base + gust.current *s);
+
+        glm::vec3 turbulence = glm::vec3(0.6f * bandWave(p.position + glm::vec3(13,0,0), (float)simTime, 0.9f, 2.0f), 0.0f,
+            0.6f * bandWave(p.position + glm::vec3(-7,0,0), (float)simTime, 0.9f, 1.6f));
+
+        glm::vec3 windAccel = gustVec + turbulence;
+
         if (p.type == ParticleType::Smoke) {
-            accel += glm::vec3(0, 3.0f, 0);
-            p.velocity *= (1.0f - 0.8f * dt);
+            accel *= smokeWeight;
+            accel += glm::vec3(0, 6.0f, 0);
+            accel += windAccel * 2.0f;
+            p.velocity *= expf(-0.8f*dt);
             p.size += 4.0f * dt;
-            float t = 1.0f - (p.life / p.maxLife);
-            p.colour.r = glm::mix(p.colour.r, 0.6f, t*0.2f);
-            p.colour.g = glm::mix(p.colour.g, 0.6f, t*0.2f);
-            p.colour.b = glm::mix(p.colour.b, 0.6f, t*0.2f);
+            p.life -= dt;
+            float t = glm::clamp(1.0f - (p.life / p.maxLife), 0.0f, 1.0f);
+            glm::vec3 cool = glm::vec3(0.8f);
+            glm::vec3 warm = glm::vec3(0.6f);
+            glm::vec3 rgb = glm::mix(cool, warm, t);
+            p.colour = glm::vec4(rgb, glm::mix(0.9f, 0.0f, t));
         }
         else if (p.type == ParticleType::Spark) {
-            p.velocity *= (1.0f - 0.15f * dt);
-            p.size += (randRange(-0.5f, 0.5f) * dt);
-            p.size = glm::clamp(p.size, 1.5f, 5.0f);
+            accel *= sparkWeight;
+            accel += glm::vec3(0, 2.0f, 0);
+            accel += windAccel * 0.9f;
+
+            float drag = expf(-2.0f * dt);
+            p.velocity *= drag;
+            p.life -= dt;
+            float t = glm::clamp(1.0f - (p.life / p.maxLife), 0.0f, 1.0f);
+            p.size = glm::mix(3.0f, 1.6f, t);
+
+            glm::vec3 hot = glm::vec3(1.0f, 0.55f, 0.15f);
+            glm::vec3 cool = glm::vec3(0.1f, 0.06f, 0.05f);
+            glm::vec3 rgb = glm::mix(hot, cool, t);
+            rgb.g *= (1.0f - 0.5f*t);
+            p.colour = glm::vec4(rgb, 1.0f);
+
+            float alpha = glm::mix(1.0f, 0.0f, t);
+            p.colour.a = (p.life > 0.0f) ? glm::max(alpha, 0.08f) : 0.0f;
+            float flicker = 1.0f + 0.1f * randRange(-1.0f, 1.0f);
+            p.colour.r *= flicker;
+            p.colour.g *= flicker;
+            p.colour.b *= flicker;
         }
+        else if (p.type == ParticleType::Rain) {
+            accel *= 1.3f;
+            accel += windAccel * .25f;
+            p.velocity *= expf(-.2f *dt);
+            p.life -= dt;
+
+            if (p.position.y <= 0.0f) p.life = -1.0f;
+            p.size = glm::clamp(1.8f + 0.05f * glm::length(p.velocity), 1.6f, 4.0f);
+        }
+        else if (p.type == ParticleType::Snow) {
+            accel *= .25f;
+            accel += windAccel * 1.4f;
+
+            glm::vec3 wobble = glm::vec3(0.6f*bandWave(p.position + glm::vec3(3,0,0), (float)simTime, 1.1f, 1.8f), 0,
+                0.6f * bandWave(p.position + glm::vec3(-2,0,0), (float)simTime, 0.9f, 1.5f));
+            accel += wobble;
+            p.velocity *= expf(-0.6f * dt);
+            p.life -= dt;
+
+            if (p.position.y <= 0.0f) {
+                p.velocity = glm::vec3(0);
+                p.colour.a *= (1.0f - 4.0f * dt);
+                if (p.colour.a < 0.05f) p.life = -1.0f;
+            }
+            p.size = glm::clamp(p.size + dt * randRange(-0.3f, 0.3f), 2.0f, 5.0f);
+            }
 
         p.velocity += accel * dt;
         p.position += p.velocity * dt;
-        p.life -= dt;
-
-        p.colour.a = std::max(0.0f, p.life / p.maxLife);
+        
     });
 
     while (!ps.isEmpty() && ps.front().life <= 0.0f) {
@@ -379,7 +464,7 @@ int main() {
 
     // VAO/VBO
     GLuint vao = 0, vbo = 0;
-    const size_t MAX = 20000;
+    const size_t MAX = 50000;
 
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
@@ -409,8 +494,11 @@ int main() {
     // Simulation
     ParticleSystem ps;
     std::vector<Emitter> emitters;
+    std::vector<Firework> fireworks;
     glm::vec3 gravity = {0, -9.81f, 0};
     std::vector<DrawParticle> drawBuffer(MAX);
+    double simTime = 0.0;
+    double fpsAccum = 0.0; int fpsFrames = 0; double fps = 0.0;
 
     Pattern currentPattern = Pattern::Plume;
     ParticleType currentType = ParticleType::Smoke;
@@ -436,7 +524,69 @@ int main() {
             emitters.push_back(em);
         } 
         else if (currentType == ParticleType::Spark) {
-            spawnFireworkBurst(ps, pos + glm::vec3(0, 0.1f, 0), 240, 7.0f, 16.0f);
+            em.type = ParticleType::Spark;
+            em.velocity = glm::vec3(0, 2.5f, 0);
+            em.rate = 800.0f;
+            if (em.pattern == Pattern::Falling) { em.velocity = glm::vec3(0, -2.5f, 0); }
+            if (em.pattern == Pattern::Random) { em.areaExtents = {2.0f, 2.0f}; em.rate = 1800.0f; }
+            if (em.pattern == Pattern::Circle) { em.circleRadius = 1.2f; em.rate = 2200.0f; }
+            em.spread = glm::radians(18.0f);
+            em.lifeMean = 1.6f;
+            em.lifeJitter = 0.5f;
+            em.sizeMean = 2.4f;
+            em.sizeJitter = 0.6f;
+            emitters.push_back(em);
+        }
+        else if (currentType == ParticleType::Firework) {
+            Firework fw;
+            fw.pos = pos;
+            fw.vel = glm::vec3(randRange(-1.5f, 1.5f), randRange(12.0f, 18.0f), randRange(-1.5f, 1.5f));
+            fw.fuse = randRange(1.4f, 2.2f);
+            fw.themeColour = glm::vec4(randRange(0.6f, 1.0f), randRange(0.3f, 0.9f), randRange(.2f, .8f), 1.0f);
+            fireworks.push_back(fw);
+
+            Emitter trail;
+            trail.position = pos;
+            trail.type = ParticleType::Smoke;
+            trail.pattern = Pattern::Rising;
+            trail.velocity = glm::vec3(0, 2.5f, 0);
+            trail.rate = 600.0f;
+            trail.lifeMean = 0.6f;
+            trail.lifeJitter = 0.2f;
+            trail.sizeMean = 4.0f;
+            trail.sizeJitter = 1.0f;
+        }
+        else if (currentType == ParticleType::Snow) {
+            Emitter em;
+            em.type = ParticleType::Snow;
+            em.pattern = Pattern::Falling;
+            em.position = glm::vec3(pos.x, 12.0f, pos.z);
+            em.areaExtents = {6.0f, 6.0f};
+            em.velocity = glm::vec3(0, -1.8f, 0);
+            em.rate = 1200.0f;
+            em.spread = glm::radians(12.0f);
+            em.lifeMean = 5; 
+            em.lifeJitter = 1.5f;
+            em.sizeMean = 3.5f;
+            em.sizeJitter = 1;
+            em.colour = glm::vec4(0.95f, 0.95f, 1, 0.85f);
+            emitters.push_back(em);
+        }
+        else if (currentType == ParticleType::Rain) {
+            Emitter em;
+            em.type = ParticleType::Rain;
+            em.pattern = Pattern::Falling;
+            em.position = glm::vec3(pos.x, 12.0f, pos.z);
+            em.areaExtents = {6.0f, 6.0f};
+            em.velocity = glm::vec3(0, -10.0f, 0);
+            em.rate = 3000.0f;
+            em.spread = glm::radians(4.0f);
+            em.lifeMean = 2.5f;
+            em.lifeJitter = 0.4f;
+            em.sizeMean = 2.0f;
+            em.sizeJitter = 0.5f;
+            em.colour = glm::vec4(0.65f, 0.7f, .8f, .7f);
+            emitters.push_back(em);
         }
     };
 
@@ -447,9 +597,16 @@ int main() {
 
     while(!glfwWindowShouldClose(window)) {
         double now = glfwGetTime();
+        double frameDt = now - last;
         acc += now - last;
         last = now;
-
+        
+        fpsAccum += frameDt;
+        fpsFrames += 1;
+        if (fpsAccum >= 0.5) {
+            fps = fpsFrames/fpsAccum;
+            fpsAccum = 0.0; fpsFrames = 0;
+        }
         double mx, my;
         glfwGetCursorPos(window, &mx, &my);
         bool LMB = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
@@ -465,7 +622,10 @@ int main() {
 
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) currentType = ParticleType::Smoke;
         if (glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS) currentType = ParticleType::Spark;
-        if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) { emitters.clear(); }
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) currentType = ParticleType::Firework;
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) currentType = ParticleType::Rain;
+        if (glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS) currentType = ParticleType::Snow;
+        if (glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS) { emitters.clear(); fireworks.clear();}
 
         if (RMB && !prevRMB) { camera.rotating = true; camera.lastX = mx; camera.lastY = my; }
         if (!RMB) camera.rotating = false;
@@ -518,34 +678,123 @@ int main() {
         }
 
         prevLMB = LMB; prevRMB = RMB; prevMMB = MMB;
+        auto updateGust = [&](float dt) {
+            gust.timer -= dt;
+            if (gust.timer <= 0.0f) {
+                gust.timer = randRange(2.0f, 5.0f); // new gust every 2 - 10 seconds
+                gust.target = randRange(0.0f, 2.0f); // Strength of the new gust of wind
+
+                float dYaw = randRange(-glm::radians(35.0f), glm::radians(35.0f));
+                float c = cosf(dYaw);
+                float s = sinf(dYaw);
+
+                glm::vec3 d = gust.dir;
+                gust.dirTarget = glm::normalize(glm::vec3(c*d.x + s*d.z, 0.0f, -s*d.x + c*d.z));
+
+                gust.base = 0.45f;
+            }
+            float k = 1.0f - expf(-dt/.8f);
+            gust.current = glm::mix(gust.current, gust.target, k);
+
+            float kd = 1.0f - expf(-dt/0.8f);
+            glm::vec3 blended = glm::normalize(glm::mix(gust.dir, gust.dirTarget, kd));
+            if (glm::all(glm::greaterThan(glm::abs(blended), glm::vec3(1e-4f)))) {
+                gust.dir = blended;
+            }
+        };
 
         while(acc >= dt) { 
-            Step(ps, emitters, (float)dt, gravity); 
+            updateGust((float)dt);
+            simTime += dt;
+            Step(ps, emitters, (float)dt, gravity, simTime); 
             acc -= dt; 
+
+            for (size_t i = 0; i < fireworks.size();) {
+                Firework& fw = fireworks[i];
+
+                glm::vec3 fwAccel = gravity * 0.8f + glm::vec3(0, 1.5f, 0);
+                fw.vel += fwAccel * (float)dt;
+                fw.pos += fw.vel * (float)dt;
+                fw.fuse -= (float)dt;
+
+                if (((int)(simTime * 90)) % 2 == 0) {
+                    Particle puff{};
+                    puff.type = ParticleType::Smoke;
+                    puff.position = fw.pos;
+                    puff.velocity = glm::vec3(randRange(-0.3f, 0.3f), randRange(0.5f, 1.2f), randRange(-0.3f, 0.3f));
+                    puff.maxLife = puff.life = randRange(.5f, .9f);
+                    puff.size = randRange(3.0f, 6.0f);
+                    puff.colour = glm::vec4(0.8f);
+                    ps.spawnParticle(puff);
+                }
+
+                if (fw.fuse <= 0.0f || fw.vel.y < 0.0f) {
+                    spawnFireworkBurst(ps, fw.pos, 260, 6.0f, 16.0f);
+
+                    fireworks[i] = fireworks.back();
+                    fireworks.pop_back();
+                    continue;
+                }
+                i++;
+            }
         }
 
-        size_t alive = ps.size(), j = 0;
+        size_t alive = ps.size(), j = 0; 
+        size_t smokeCount = 0, sparkCount = 0, rainCount = 0, snowCount = 0;
+
         ps.forEachAlive([&](const Particle& p) {
-            drawBuffer[j].pos_size = glm::vec4(p.position, p.size);
-            drawBuffer[j].colour = p.colour;
-            j++;
+            switch (p.type) {
+                case ParticleType::Smoke: smokeCount++; break;
+                case ParticleType::Spark: sparkCount++; break;
+                case ParticleType::Rain: rainCount++; break;
+                case ParticleType::Snow: snowCount++; break;
+                default: break;
+            }
         });
+        size_t baseSmoke = 0;
+        size_t baseSnow = baseSmoke + smokeCount;
+        size_t baseRain = baseSnow  + snowCount;
+        size_t baseSpark = baseRain  + rainCount;
+
+        size_t iSmoke = baseSmoke, iSnow = baseSnow, iRain = baseRain, iSpark = baseSpark;
+        ps.forEachAlive([&](const Particle& p) {
+            size_t idx;
+            if (p.type == ParticleType::Smoke) idx = iSmoke++;
+            else if (p.type == ParticleType::Snow) idx = iSnow++;
+            else if (p.type == ParticleType::Rain) idx = iRain++;
+            else idx = iSpark++;
+            drawBuffer[idx].pos_size = glm::vec4(p.position, p.size);
+            drawBuffer[idx].colour = p.colour;
+        });
+        
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, alive * sizeof(DrawParticle), drawBuffer.data());
+        glBufferSubData(GL_ARRAY_BUFFER, 0, (baseSpark + sparkCount) * sizeof(DrawParticle), drawBuffer.data());
 
         // Draw
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);   
+
         glm::mat4 view = cameraView(camera);
         glm::mat4 vp = proj * view;
+
         glUseProgram(program);
         glUniformMatrix4fv(loc, 1, GL_FALSE, glm::value_ptr(vp));
         glBindVertexArray(vao);
-        glDrawArrays(GL_POINTS, 0, (GLsizei)alive);
+
+        glDepthMask(GL_FALSE);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDrawArrays(GL_POINTS, (GLsizei)baseSmoke, (GLsizei)(smokeCount + snowCount + rainCount));
+
+        glBlendFunc(GL_ONE, GL_ONE);
+        glDrawArrays(GL_POINTS, (GLsizei)baseSpark, (GLsizei)sparkCount);
+
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_TRUE);
+
         {
             const char* patterns[] = { "Plume", "Random", "Rising", "Falling", "Circle" };
-            const char* types[] = { "Default", "Smoke", "Spark" };
+            const char* types[] = { "Smoke", "Spark", "Firework", "Rain", "Snow" };
             char title[128];
-            snprintf(title, sizeof(title), "Particles | Pattern: %s | Type: %s | Alive: %zu", patterns[(int)currentPattern], types[(int)currentType], alive);
+            snprintf(title, sizeof(title), "Particles | Pattern: %s | Type: %s | Alive: %zu | FPS: %.1f", patterns[(int)currentPattern], types[(int)currentType], alive, fps);
             glfwSetWindowTitle(window, title);
         }
 
@@ -565,14 +814,3 @@ int main() {
     glfwTerminate();
     return 0;
 }
-
-// TODO:
-// Change sparks from fireworks to a different spark type (fire-y)
-// Add wind force
-// Fireworks should be their own type that shoot up and burst
-// Add a ground plane and have particles collide with 
-// Add a skybox
-// Add a UI (Dear ImGui?)
-// Spiral, helix, Donut, Fountain
-// Rain/Snow
-// FPS Counter
