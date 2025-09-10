@@ -1,61 +1,128 @@
 # OpenGL Particle System
 
-This project implements a **real-time particle system** in C++ using **OpenGL 4.5**, **GLFW**, **GLAD**, and **GLM**.  
-It supports multiple particle emission patterns and particle types, and renders them as smooth, circular, feathered sprites via custom GLSL shaders.
+Real-time particle system in C++ using OpenGL 4.6, GLFW, GLAD, and GLM.
+Supports multiple emission patterns and particle types, including smoke, sparks, fireworks, rain, and snow. Particles are rendered as smooth, circular, feathered sprites via custom GLSL shaders.
 
 ---
 
-## Project Structure
-├── deps/ | External dependencies (GLFW, GLAD, GLM, etc.)  
-├── shaders/  | Custom shaders  
-│ ├── points.vert | Vertex shader (transforms and sizes particles)  
-│ └── points.frag | Fragment shader (circular sprite with smooth edges)  
-├── particle_main.cpp | Main C++ program (simulation + rendering loop)  
-└── README.md | Project documentation  
+## Project Structure  
+├── deps/                 External dependencies (GLFW, GLAD, GLM, etc.)  
+├── shaders/              Custom shaders  
+│   ├── points.vert       Vertex shader (transform + size)  
+│   └── points.frag       Fragment shader (circular sprite with smooth edges)  
+├── particle_main.cpp     Simulation + rendering loop  
+└── README.md             This file  
+
+---
 
 ## Features
+- Scalable particle core
+- Efficient circular buffer with capacity for 50,000 particles.
+- Stable iteration helpers to update and draw only alive particles.
+- Emission patterns like Plume, Random, Rising, Falling, Circle.
 
-- **Particle system architecture**
-  - Efficient circular buffer for up to **20,000 particles**.
-  - Multiple emission patterns (`Plume`, `Random`, `Rising`, `Falling`, `Circle`).
-  - Two particle types with unique behaviors:
-    - **Smoke**: fades, expands, and drifts upward.
-    - **Sparks**: bright bursts with randomized flicker and decay.
+### Particle types & behaviors
 
-- **Interactive camera controls**
-  - **Right Mouse Drag** → Orbit camera.
-  - **Middle Mouse Drag / Shift + Right Mouse Drag** → Pan camera.
-  - **Scroll Wheel** → Zoom.
+- Smoke: buoyant, expands, fades; wind-responsive drift.
+- Sparks: bright, flicker/decay, drag; additive blending.
+- Firework: launches with a fuse, emits smoke trail, explodes into a radial spark burst.
+- Rain: fast falling streaks that die on ground contact.
+- Snow: slow, wind-wobbly flakes that settle and fade on the ground.
 
-- **Emitter placement**
-  - **Left Click** to place an emitter at the ground plane.
-  - Multiple emitters can be active at once.
+### Wind & turbulence
 
-- **Keyboard shortcuts**
-  - `1`–`5` Selects emission pattern (`Plume`, `Random`, `Rising`, `Falling`, `Circle`).
-  - `S` activate Smoke particles.
-  - `F` activate Firework burst (sparks).
-  - `C` Clear all emitters.
+- Time-varying gust system (direction + strength targets with smooth interpolation).
+- Low-frequency band-wave turbulence for natural meander.
 
-- **Shaders**
-  - Vertex shader (`points.vert`): applies projection, view transformations, and particle sizing.
-  - Fragment shader (`points.frag`): renders circular, feathered point sprites with per-particle color.
+### Rendering pipeline
 
-  ---
+- Single VBO of packed DrawParticle { vec4 pos_size, vec4 colour }.
+- Type grouping each frame: alpha-blended pass for smoke/snow/rain, additive pass for sparks.
+- GLSL shaders produce circular, feathered point sprites with per-particle color/alpha.
 
-  ## Getting Started
+### Interactive camera
 
-  ### Prerequisites
+Controls:
+- Right-drag: orbit
+- Middle-drag or Shift + Right-drag: pan
+- Scroll: zoom
+
+### Emitter placement
+- Left-click: place an emitter, with multiple emitters supported.
+
+## Keyboard shortcuts
+
+### Patterns:
+  - `1` Plume
+  - `2` Random
+  - `3` Rising
+  - `4` Falling
+  - `5` Circle
+
+### Types:
+  - `S` Smoke
+  - `F` Spark
+  - `W` Firework
+  - `R` Rain
+  - `N` Snow
+    
+### Global: 
+  - `C` Clear all emitters
+
+## Shaders
+
+- Vertex (shaders/points.vert)
+  - Applies projection/view transform and writes per-vertex gl_PointSize from pos_size.w. Expects uniform uViewProj.
+
+- Fragment (shaders/points.frag)
+  - Computes a circular mask in point coordinates to create round, feathered sprites and tints by the provided colour.
+
+---
+
+## Getting Started
+
+### Prerequisites
 - C++17 or later
-- OpenGL 4.5+
-- CMake (recommended)
-- Dependencies:
-  - [GLFW](https://www.glfw.org/) – window & input handling
-  - [GLAD](https://glad.dav1d.de/) – OpenGL loader
-  - [GLM](https://github.com/g-truc/glm) – math library
+- OpenGL 4.6 context (the code requests 4.6; most 4.5+ drivers work)
+- CMake (recommended) or your preferred build system
 
-### Build & Run
-In the project terminal run:  
-```g++ .\particle_main.cpp .\deps\src\glad.c -I .\deps\include -I C:\msys64\mingw64\include -L C:\msys64\mingw64\lib -lglfw3 -lopengl32 -lgdi32 -luser32 -lshell32 -lwinmm -o main.exe```  
-Then run the .exe with:  
-```./main```
+### Dependencies:  
+- GLFW  
+ – window & input  
+- GLAD  
+ – OpenGL loader  
+- GLM  
+ – OpenGL math  
+
+## Build & Run
+Quick compile (MinGW-w64 / Windows)
+
+From the project root:
+```
+g++ .\particle_main.cpp .\deps\src\glad.c ^  
+  -I .\deps\include ^  
+  -I C:\msys64\mingw64\include ^  
+  -L C:\msys64\mingw64\lib ^  
+  -lglfw3 -lopengl32 -lgdi32 -luser32 -lshell32 -lwinmm -o main.exe  
+```
+Then run:
+```
+./main
+```
+Linux 
+```
+g++ particle_main.cpp deps/src/glad.c \
+  -I deps/include \
+  -lglfw -ldl -lX11 -lpthread -lXrandr -lXi -o main
+./main
+```
+
+macOS (using system frameworks + Homebrew GLFW)
+```
+clang++ particle_main.cpp deps/src/glad.c \
+  -I deps/include \
+  -L /opt/homebrew/lib -lglfw \
+  -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo \
+  -std=c++17 -o main
+./main
+```
