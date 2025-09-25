@@ -3,7 +3,7 @@
 Real-time particle system in C++ using OpenGL 4.6, GLFW, GLAD, and GLM.
 Supports multiple emission patterns and particle types, including smoke, sparks, fireworks, rain, and snow. Particles are rendered as smooth, circular, feathered sprites via custom GLSL shaders.
 
-![Alt Text](https://media.giphy.com/media/your-gif-link/giphy.gif)
+![Alt Text]([https://media.giphy.com/media/your-gif-link/giphy.gif](https://giphy.com/gifs/ABRmLAPr5BExNPFOcG))
 
 ---
 
