@@ -13,6 +13,7 @@ Supports multiple emission patterns and particle types, including smoke, sparks,
 │   ├── points.vert       | Vertex shader (transform + size)  
 │   └── points.frag       | Fragment shader (circular sprite with smooth edges)  
 ├── particle_main.cpp     | Simulation + rendering loop  
+├── particle_main.hpp     | Header file with struct definitions
 └── README.md             | This file  
 
 ---
